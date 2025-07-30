@@ -1,0 +1,7 @@
+﻿services:
+  aisandbox:
+    image: aisandbox
+    build:
+      context: .
+      dockerfile: AISandbox/Dockerfile
+
