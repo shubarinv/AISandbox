@@ -1,12 +1,17 @@
 ﻿using AISandbox.Extensions;
-using AISandbox.Models;
 using OpenAI.Chat;
+using ChatMessage = AISandbox.Models.ChatMessage;
 
 namespace AISandbox.Services.Implementations;
 
 public class OpenAiChatService : AiChatService
 {
     private ChatClient? _client;
+
+    public OpenAiChatService()
+    {
+        Provider = "OpenAI";
+    }
 
     public override Task InitializeAsync()
     {
@@ -20,22 +25,41 @@ public class OpenAiChatService : AiChatService
         return base.InitializeAsync();
     }
 
-    public override async Task<string> SendMessageAsync(string message)
+    public override async Task<string> SendMessageAsync(List<ChatMessage> messages)
     {
         if (_client == null)
         {
             throw new InvalidOperationException("Chat client is not initialized. Call InitializeAsync first.");
         }
 
-        var messages = Messages.Select(x => x.ToOpenAIChatMessage()).ToList();
-        messages.Add(new UserChatMessage(message));
-        AddMessage(message, MessageType.User);
+        var openAiMessages = messages.Select(x => x.ToOpenAIChatMessage()).ToList();
 
 
-        var completion = await _client.CompleteChatAsync(messages);
+        var completion = await _client.CompleteChatAsync(openAiMessages);
         var response = completion.Value.Content[0].Text;
-        AddMessage(response, MessageType.Assistant);
-
         return response;
+    }
+
+
+    public override async IAsyncEnumerable<string> StreamMessageAsync(List<ChatMessage> messages)
+    {
+        if (_client == null)
+        {
+            throw new InvalidOperationException("Chat client is not initialized. Call InitializeAsync first.");
+        }
+
+        var openAiMessages = messages.Select(x => x.ToOpenAIChatMessage()).ToList();
+
+        await foreach (var chunk in _client.CompleteChatStreamingAsync(openAiMessages))
+        {
+            if (chunk?.ContentUpdate is { Count: > 0 }) // turns out that OpenAI's API can return null or empty content updates
+            {
+                var text = chunk.ContentUpdate[0].Text;
+                if (!string.IsNullOrEmpty(text))
+                {
+                    yield return text;
+                }
+            }
+        }
     }
 }
